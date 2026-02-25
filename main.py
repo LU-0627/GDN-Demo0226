@@ -32,6 +32,8 @@ import matplotlib.pyplot as plt
 
 import json
 import random
+import time
+from util.exp_logger import init_experiment_logger, save_config, shanghai_now
 
 class Main():
     def __init__(self, train_config, env_config, debug=False):
@@ -39,6 +41,24 @@ class Main():
         self.train_config = train_config
         self.env_config = env_config
         self.datestr = None
+
+        log_root = env_config.get('log_root', './logs')
+        resume_dir = env_config.get('resume_dir', '')
+        self.logger, self.exp_paths = init_experiment_logger(
+            dataset=env_config['dataset'],
+            log_root=log_root,
+            resume_dir=resume_dir if len(resume_dir) > 0 else None,
+            logger_name='mtsad-train',
+            rank=0,
+        )
+
+        full_config = {
+            'train_config': train_config,
+            'env_config': env_config,
+        }
+        save_config(full_config, self.exp_paths.config_file)
+        self.logger.info(f'Experiment directory: {self.exp_paths.exp_dir}')
+        self.logger.info('Configuration saved.')
 
         dataset = self.env_config['dataset'] 
         train_orig = pd.read_csv(f'./data/{dataset}/train.csv', sep=',', index_col=0)
@@ -99,21 +119,26 @@ class Main():
 
 
     def run(self):
+        run_start = time.time()
+        self.logger.info(f'Training started at {shanghai_now().strftime("%Y-%m-%d %H:%M:%S")}.')
 
         if len(self.env_config['load_model_path']) > 0:
             model_save_path = self.env_config['load_model_path']
+            self.logger.info(f'Resume/Load model from: {model_save_path}')
         else:
-            model_save_path = self.get_save_path()[0]
+            model_save_path = self.exp_paths.model_file
 
             self.train_log = train(self.model, model_save_path, 
-                config = train_config,
+                config = self.train_config,
                 train_dataloader=self.train_dataloader,
                 val_dataloader=self.val_dataloader, 
                 feature_map=self.feature_map,
                 test_dataloader=self.test_dataloader,
                 test_dataset=self.test_dataset,
                 train_dataset=self.train_dataset,
-                dataset_name=self.env_config['dataset']
+                dataset_name=self.env_config['dataset'],
+                logger=self.logger,
+                metrics_file=self.exp_paths.metrics_file,
             )
         
         # test            
@@ -124,6 +149,9 @@ class Main():
         _, self.val_result = test(best_model, self.val_dataloader)
 
         self.get_score(self.test_result, self.val_result, model_save_path)
+
+        total_time = time.time() - run_start
+        self.logger.info(f'Training finished at {shanghai_now().strftime("%Y-%m-%d %H:%M:%S")}, total_seconds={total_time:.2f}.')
 
     def get_loaders(self, train_dataset, seed, batch, val_ratio=0.1):
         dataset_len = int(len(train_dataset))
@@ -188,6 +216,28 @@ class Main():
         print(f'Best Threshold: {metrics["best_threshold"]}')
         print(f'Average TTD: {metrics["avg_ttd"]}\n')
 
+        self.logger.info(f'scoring components saved: {scoring_path}')
+        self.logger.info(
+            f'Strict metrics | F1={metrics["strict_f1"]:.6f}, '
+            f'Precision={metrics["strict_precision"]:.6f}, '
+            f'Recall={metrics["strict_recall"]:.6f}, '
+            f'PR-AUC={metrics["strict_pr_auc"]:.6f}, '
+            f'Threshold={metrics["best_threshold"]:.6f}, '
+            f'AvgTTD={metrics["avg_ttd"]}'
+        )
+        eval_metrics_path = os.path.join(self.exp_paths.exp_dir, 'eval_metrics.json')
+        eval_payload = {
+            'time': shanghai_now().strftime('%Y-%m-%d %H:%M:%S'),
+            'strict_f1': float(metrics['strict_f1']),
+            'strict_precision': float(metrics['strict_precision']),
+            'strict_recall': float(metrics['strict_recall']),
+            'strict_pr_auc': float(metrics['strict_pr_auc']),
+            'best_threshold': float(metrics['best_threshold']),
+            'avg_ttd': float(metrics['avg_ttd']) if metrics['avg_ttd'] == metrics['avg_ttd'] else None,
+        }
+        with open(eval_metrics_path, 'w', encoding='utf-8') as f:
+            json.dump(eval_payload, f, ensure_ascii=False, indent=2)
+
 
     def get_save_path(self, feature_name=''):
 
@@ -230,6 +280,8 @@ if __name__ == "__main__":
     parser.add_argument('-topk', help='topk num', type = int, default=20)
     parser.add_argument('-report', help='best / val', type = str, default='best')
     parser.add_argument('-load_model_path', help='trained model path', type = str, default='')
+    parser.add_argument('-log_root', help='log root dir', type = str, default='./logs')
+    parser.add_argument('-resume_dir', help='resume experiment dir for append logging', type = str, default='')
 
     args = parser.parse_args()
 
@@ -263,7 +315,9 @@ if __name__ == "__main__":
         'dataset': args.dataset,
         'report': args.report,
         'device': args.device,
-        'load_model_path': args.load_model_path
+        'load_model_path': args.load_model_path,
+        'log_root': args.log_root,
+        'resume_dir': args.resume_dir,
     }
     
 

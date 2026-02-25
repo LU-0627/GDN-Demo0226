@@ -13,6 +13,7 @@ from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_sco
 from torch.utils.data import DataLoader, random_split, Subset
 from scipy.stats import iqr
 from sklearn.cluster import KMeans
+from util.exp_logger import append_metrics, shanghai_now
 
 
 
@@ -67,7 +68,7 @@ def loss_func(
 
 
 
-def train(model = None, save_path = '', config={},  train_dataloader=None, val_dataloader=None, feature_map={}, test_dataloader=None, test_dataset=None, dataset_name='swat', train_dataset=None):
+def train(model = None, save_path = '', config={},  train_dataloader=None, val_dataloader=None, feature_map={}, test_dataloader=None, test_dataset=None, dataset_name='swat', train_dataset=None, logger=None, metrics_file=None):
 
     seed = config['seed']
 
@@ -107,6 +108,7 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
     stop_improve_count = 0
 
     dataloader = train_dataloader
+    grad_explode_threshold = float(config.get('grad_explode_threshold', 1e4))
 
     for i_epoch in range(epoch):
 
@@ -142,8 +144,29 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
                 lambda_balance=active_balance,
                 lambda_smooth=lambda_smooth,
             )
+
+            if not torch.isfinite(loss):
+                if logger is not None:
+                    logger.warning(
+                        f'NaN/Inf loss detected at epoch={i_epoch}, step={i}; '
+                        f'recon={float(recon_loss.detach().cpu().item()):.6f}, '
+                        f'balance={float(balance_loss.detach().cpu().item()):.6f}, '
+                        f'smooth={float(smooth_loss.detach().cpu().item()):.6f}'
+                    )
+                optimizer.zero_grad(set_to_none=True)
+                continue
             
             loss.backward()
+
+            grad_norm_sq = 0.0
+            for param in model.parameters():
+                if param.grad is not None:
+                    grad_norm_sq += float(torch.sum(param.grad.detach() * param.grad.detach()).item())
+            grad_norm = grad_norm_sq ** 0.5
+            if (not np.isfinite(grad_norm)) or grad_norm > grad_explode_threshold:
+                if logger is not None:
+                    logger.warning(f'Gradient explosion warning at epoch={i_epoch}, step={i}, grad_norm={grad_norm:.6f}')
+
             optimizer.step()
 
             if pi_t is not None:
@@ -174,6 +197,8 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
                         i_epoch, epoch, 
                         acu_loss/len(dataloader), acu_loss), flush=True
             )
+        if logger is not None:
+            logger.info(f'epoch={i_epoch}/{epoch} train_loss={acu_loss/len(dataloader):.8f} train_acu_loss={acu_loss:.8f}')
 
         # use val dataset to judge
         if val_dataloader is not None:
@@ -182,6 +207,8 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
 
             if val_loss < min_loss:
                 torch.save(model.state_dict(), save_path)
+                if logger is not None:
+                    logger.info(f'model saved at epoch={i_epoch}, val_loss={val_loss:.8f}, path={save_path}')
 
                 min_loss = val_loss
                 stop_improve_count = 0
@@ -190,12 +217,34 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
 
 
             if stop_improve_count >= early_stop_win:
+                if logger is not None:
+                    logger.info(f'early stop triggered at epoch={i_epoch}, patience={early_stop_win}')
                 break
+
+            if metrics_file is not None:
+                append_metrics(metrics_file, {
+                    'time': shanghai_now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'epoch': i_epoch,
+                    'train_loss': float(acu_loss/len(dataloader)),
+                    'val_loss': float(val_loss),
+                    'best_val_loss': float(min_loss),
+                })
 
         else:
             if acu_loss < min_loss :
                 torch.save(model.state_dict(), save_path)
+                if logger is not None:
+                    logger.info(f'model saved at epoch={i_epoch}, train_acu_loss={acu_loss:.8f}, path={save_path}')
                 min_loss = acu_loss
+
+            if metrics_file is not None:
+                append_metrics(metrics_file, {
+                    'time': shanghai_now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'epoch': i_epoch,
+                    'train_loss': float(acu_loss/len(dataloader)),
+                    'val_loss': '',
+                    'best_val_loss': float(min_loss),
+                })
 
 
 
