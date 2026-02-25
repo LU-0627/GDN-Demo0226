@@ -66,7 +66,8 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
             x, labels, edge_index = [item.float().to(device) for item in [x, labels, edge_index]]
 
             optimizer.zero_grad()
-            out = model(x, edge_index).float().to(device)
+            out, _ = model(x, edge_index)
+            out = out.float().to(device)
             loss = loss_func(out, labels)
             
             loss.backward()

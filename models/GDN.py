@@ -115,9 +115,6 @@ class GDN(nn.Module):
         self.cond_attn_vec = nn.Linear(hidden_dim, 1, bias=False)
         self.cond_attn_act = nn.LeakyReLU(negative_slope=0.2)
 
-        self.last_h_sys = None
-        self.last_beta = None
-
         self.cache_edge_index_sets = [None] * edge_set_num
         self.cache_embed_index = None
 
@@ -194,11 +191,7 @@ class GDN(nn.Module):
         e_it = torch.nan_to_num(e_it, nan=0.0, posinf=1e4, neginf=-1e4)
 
         # (3) beta_{i,t} = Softmax(e_{i,t}) over node dimension N
-        # numerical stabilization: subtract row-wise max, shape stays [B, N]
-        e_it = e_it - e_it.max(dim=1, keepdim=True).values
         beta_it = F.softmax(e_it, dim=1)
-        beta_it = torch.nan_to_num(beta_it, nan=0.0, posinf=0.0, neginf=0.0)
-        beta_it = beta_it / beta_it.sum(dim=1, keepdim=True).clamp_min(1e-12)
 
         # (4) h_{sys,t} = sum_i beta_{i,t} h_{i,t}
         # beta_{i,t} unsqueeze: [B, N, 1]
@@ -206,13 +199,12 @@ class GDN(nn.Module):
         # h_{sys,t}: [B, H]
         h_sys_t = torch.sum(beta_it.unsqueeze(-1) * h_it, dim=1)
 
-        # cache for later modules (routing/scoring)
-        self.last_h_sys = h_sys_t
-        self.last_beta = beta_it
-
-
         indexes = torch.arange(0,node_num).to(device)
-        out = torch.mul(x, self.embedding(indexes))
+        node_embed = self.embedding(indexes)
+        if x.shape[-1] != node_embed.shape[-1]:
+            repeat_factor = x.shape[-1] // node_embed.shape[-1]
+            node_embed = node_embed.repeat(1, repeat_factor)
+        out = torch.mul(x, node_embed.unsqueeze(0))
         
         out = out.permute(0,2,1)
         out = F.relu(self.bn_outlayer_in(out))
@@ -223,5 +215,5 @@ class GDN(nn.Module):
         out = out.view(-1, node_num)
    
 
-        return out
+        return out, h_sys_t
         

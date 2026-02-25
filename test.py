@@ -44,7 +44,8 @@ def test(model, dataloader):
         x, y, labels, edge_index = [item.to(device).float() for item in [x, y, labels, edge_index]]
         
         with torch.no_grad():
-            predicted = model(x, edge_index).float().to(device)
+            predicted, _ = model(x, edge_index)
+            predicted = predicted.float().to(device)
             
             
             loss = loss_func(predicted, y)
