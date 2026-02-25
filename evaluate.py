@@ -1,7 +1,7 @@
 from util.data import *
 import numpy as np
 import torch
-from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score, precision_recall_curve, auc
 
 
 def _to_numpy_array(data):
@@ -108,7 +108,7 @@ def _compute_final_scores(result, model, alpha=1.0, gamma=1.0, topq=0.1, chunk_s
 
 
 def get_full_err_scores(test_result, val_result, model, alpha=1.0, gamma=1.0, topq=0.1, chunk_size=256):
-    test_scores, _, _, _ = _compute_final_scores(
+    final_scores, residual_scores, struct_scores, gate_scores = _compute_final_scores(
         test_result,
         model,
         alpha=alpha,
@@ -117,20 +117,11 @@ def get_full_err_scores(test_result, val_result, model, alpha=1.0, gamma=1.0, to
         chunk_size=chunk_size,
     )
 
-    normal_scores, _, _, _ = _compute_final_scores(
-        val_result,
-        model,
-        alpha=alpha,
-        gamma=gamma,
-        topq=topq,
-        chunk_size=chunk_size,
-    )
-
-    return test_scores, normal_scores
+    return final_scores, residual_scores, struct_scores, gate_scores
 
 
 def get_final_err_scores(test_result, val_result, model, alpha=1.0, gamma=1.0, topq=0.1, chunk_size=256):
-    full_scores, _ = get_full_err_scores(
+    full_scores, _, _, _ = get_full_err_scores(
         test_result,
         val_result,
         model,
@@ -141,6 +132,84 @@ def get_final_err_scores(test_result, val_result, model, alpha=1.0, gamma=1.0, t
     )
 
     return full_scores
+
+
+def compute_detection_delay(pred_labels, true_labels):
+    pred = np.array(pred_labels).astype(int)
+    true = np.array(true_labels).astype(int)
+
+    if pred.shape[0] != true.shape[0]:
+        time_len = min(pred.shape[0], true.shape[0])
+        pred = pred[:time_len]
+        true = true[:time_len]
+
+    delays = []
+    idx = 0
+    total_len = len(true)
+
+    while idx < total_len:
+        if true[idx] == 1:
+            start = idx
+            while idx + 1 < total_len and true[idx + 1] == 1:
+                idx += 1
+            end = idx
+
+            hit_indices = np.where(pred[start:end + 1] == 1)[0]
+            if hit_indices.size > 0:
+                first_hit = start + int(hit_indices[0])
+                delays.append(first_hit - start)
+        idx += 1
+
+    if len(delays) == 0:
+        return np.nan
+
+    return float(np.mean(delays))
+
+
+def compute_modern_metrics(scores, true_labels, threshold_steps=400):
+    score_arr = _to_numpy_array(scores).reshape(-1)
+    true_arr = np.array(true_labels).astype(int).reshape(-1)
+
+    time_len = min(score_arr.shape[0], true_arr.shape[0])
+    score_arr = score_arr[:time_len]
+    true_arr = true_arr[:time_len]
+
+    prec_curve, rec_curve, _ = precision_recall_curve(true_arr, score_arr)
+    pr_auc = auc(rec_curve, prec_curve)
+
+    quantiles = np.linspace(0.0, 1.0, int(threshold_steps), endpoint=False)
+    candidate_thresholds = np.quantile(score_arr, quantiles)
+
+    best_f1 = -1.0
+    best_pre = 0.0
+    best_rec = 0.0
+    best_th = float(candidate_thresholds[0]) if len(candidate_thresholds) > 0 else 0.0
+    best_pred = np.zeros_like(true_arr)
+
+    for th in candidate_thresholds:
+        pred_labels = (score_arr > th).astype(int)
+
+        pre = precision_score(true_arr, pred_labels, zero_division=0)
+        rec = recall_score(true_arr, pred_labels, zero_division=0)
+        f1 = f1_score(true_arr, pred_labels, zero_division=0)
+
+        if f1 > best_f1:
+            best_f1 = float(f1)
+            best_pre = float(pre)
+            best_rec = float(rec)
+            best_th = float(th)
+            best_pred = pred_labels
+
+    ttd = compute_detection_delay(best_pred, true_arr)
+
+    return {
+        'strict_f1': best_f1,
+        'strict_precision': best_pre,
+        'strict_recall': best_rec,
+        'strict_pr_auc': float(pr_auc),
+        'best_threshold': best_th,
+        'avg_ttd': ttd,
+    }
 
 
 def get_err_scores(test_res, val_res):

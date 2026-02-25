@@ -19,7 +19,7 @@ from models.GDN import GDN
 
 from train import train
 from test  import test
-from evaluate import get_err_scores, get_best_performance_data, get_val_performance_data, get_full_err_scores
+from evaluate import get_full_err_scores, compute_modern_metrics
 
 import sys
 from datetime import datetime
@@ -123,7 +123,7 @@ class Main():
         _, self.test_result = test(best_model, self.test_dataloader)
         _, self.val_result = test(best_model, self.val_dataloader)
 
-        self.get_score(self.test_result, self.val_result)
+        self.get_score(self.test_result, self.val_result, model_save_path)
 
     def get_loaders(self, train_dataset, seed, batch, val_ratio=0.1):
         dataset_len = int(len(train_dataset))
@@ -147,14 +147,14 @@ class Main():
 
         return train_dataloader, val_dataloader
 
-    def get_score(self, test_result, val_result):
+    def get_score(self, test_result, val_result, model_save_path):
         test_labels_arr = np.array(test_result[2])
         if test_labels_arr.ndim == 1:
             test_labels = test_labels_arr.astype(int).tolist()
         else:
             test_labels = test_labels_arr[:, 0].astype(int).tolist()
 
-        test_scores, normal_scores = get_full_err_scores(
+        final_scores, residual_scores, struct_scores, gate_scores = get_full_err_scores(
             test_result,
             val_result,
             self.model,
@@ -164,21 +164,29 @@ class Main():
             chunk_size=256,
         )
 
-        top1_best_info = get_best_performance_data(test_scores, test_labels, topk=1) 
-        top1_val_info = get_val_performance_data(test_scores, normal_scores, test_labels, topk=1)
+        save_dir = os.path.dirname(model_save_path)
+        os.makedirs(save_dir, exist_ok=True)
+        scoring_path = os.path.join(save_dir, 'scoring_components.npz')
+        np.savez(
+            scoring_path,
+            final_scores=np.array(final_scores),
+            residual_scores=np.array(residual_scores),
+            struct_scores=np.array(struct_scores),
+            gate_scores=np.array(gate_scores),
+            labels=np.array(test_labels),
+        )
+
+        metrics = compute_modern_metrics(final_scores, test_labels, threshold_steps=400)
 
 
         print('=========================** Result **============================\n')
-
-        info = None
-        if self.env_config['report'] == 'best':
-            info = top1_best_info
-        elif self.env_config['report'] == 'val':
-            info = top1_val_info
-
-        print(f'F1 score: {info[0]}')
-        print(f'precision: {info[1]}')
-        print(f'recall: {info[2]}\n')
+        print(f'scoring components saved: {scoring_path}')
+        print(f'Strict F1: {metrics["strict_f1"]}')
+        print(f'Strict Precision: {metrics["strict_precision"]}')
+        print(f'Strict Recall: {metrics["strict_recall"]}')
+        print(f'Strict PR-AUC: {metrics["strict_pr_auc"]}')
+        print(f'Best Threshold: {metrics["best_threshold"]}')
+        print(f'Average TTD: {metrics["avg_ttd"]}\n')
 
 
     def get_save_path(self, feature_name=''):
