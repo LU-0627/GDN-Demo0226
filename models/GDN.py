@@ -167,47 +167,32 @@ class GDN(nn.Module):
         uniform = torch.rand(shape, device=device).clamp_(1e-6, 1 - 1e-6)
         return -torch.log(-torch.log(uniform))
 
-    def _build_sparse_graph_topk(self, node_embed, topk_num):
-        num_nodes = node_embed.shape[0]
-        use_k = max(1, min(topk_num, num_nodes))
-
-        src_list = []
-        dst_list = []
-        weight_list = []
-
-        for dst in range(num_nodes):
-            query = node_embed[dst]  # shape: [d]
-            scores = torch.matmul(node_embed, query)  # shape: [N]
-            scores = torch.nan_to_num(scores, nan=0.0, posinf=1e4, neginf=-1e4)
-
-            topk_vals, topk_idx = torch.topk(scores, k=use_k, dim=0)  # shape: [K], [K]
-            topk_w = F.softmax(topk_vals, dim=0)  # shape: [K]
-
-            src_list.append(topk_idx)
-            dst_list.append(torch.full_like(topk_idx, dst))
-            weight_list.append(topk_w)
-
-        src = torch.cat(src_list, dim=0)  # shape: [N*K]
-        dst = torch.cat(dst_list, dim=0)  # shape: [N*K]
-        edge_weight = torch.cat(weight_list, dim=0)  # shape: [N*K]
-        edge_index = torch.stack((src, dst), dim=0)  # shape: [2, N*K]
-
-        return edge_index.long(), edge_weight
-
     def _batch_sparse_graph(self, mixed_embed, topk_num):
+        # mixed_embed: [B, N, d]
         batch_size, num_nodes, _ = mixed_embed.shape
+        use_k = max(1, min(topk_num, num_nodes))
+        device = mixed_embed.device
 
-        edge_index_list = []
-        edge_weight_list = []
+        # 1) Batched similarity by BMM: [B, N, d] @ [B, d, N] -> [B, N, N]
+        scores = torch.bmm(mixed_embed, mixed_embed.transpose(1, 2))  # shape: [B, N, N]
+        scores = torch.nan_to_num(scores, nan=0.0, posinf=1e4, neginf=-1e4)
 
-        for batch_idx in range(batch_size):
-            edge_index_b, edge_weight_b = self._build_sparse_graph_topk(mixed_embed[batch_idx], topk_num)
-            edge_index_b = edge_index_b + batch_idx * num_nodes
-            edge_index_list.append(edge_index_b)
-            edge_weight_list.append(edge_weight_b)
+        # 2) Batched TopK on node dimension
+        topk_vals, topk_idx = torch.topk(scores, k=use_k, dim=-1)  # shape: [B, N, K], [B, N, K]
+        topk_w = F.softmax(topk_vals, dim=-1)  # shape: [B, N, K]
 
-        batch_edge_index = torch.cat(edge_index_list, dim=1)  # shape: [2, B*N*K]
-        batch_edge_weight = torch.cat(edge_weight_list, dim=0)  # shape: [B*N*K]
+        # 3) Build destination indices
+        dst_idx = torch.arange(num_nodes, device=device).view(1, num_nodes, 1).expand(batch_size, num_nodes, use_k)  # shape: [B, N, K]
+
+        # 4) Batch offset
+        batch_offset = (torch.arange(batch_size, device=device) * num_nodes).view(batch_size, 1, 1)  # shape: [B, 1, 1]
+
+        # 5) Flatten to sparse edge format
+        src = (topk_idx + batch_offset).flatten()  # shape: [B*N*K]
+        dst = (dst_idx + batch_offset).flatten()  # shape: [B*N*K]
+
+        batch_edge_index = torch.stack((src, dst), dim=0).long()  # shape: [2, B*N*K]
+        batch_edge_weight = topk_w.flatten()  # shape: [B*N*K]
 
         return batch_edge_index, batch_edge_weight
 
