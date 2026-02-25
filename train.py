@@ -46,7 +46,7 @@ def loss_func(
     balance_loss = torch.zeros((), device=y_pred.device)
     if pi_t is not None and p_prior is not None:
         mean_pi = pi_t.mean(dim=0)
-        balance_loss = F.kl_div(torch.log(mean_pi + 1e-8), p_prior.detach(), reduction='batchmean')
+        balance_loss = F.kl_div(torch.log(mean_pi + 1e-8), p_prior.detach(), reduction='sum')
 
     smooth_loss = torch.zeros((), device=y_pred.device)
     if pi_t is not None and prev_pi is not None:

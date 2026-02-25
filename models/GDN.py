@@ -299,5 +299,5 @@ class GDN(nn.Module):
         out = out.view(-1, node_num)
    
 
-        return out, h_sys_t, pi_t
+        return out, h_sys_t, pi_soft
         
