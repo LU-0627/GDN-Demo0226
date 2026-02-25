@@ -44,7 +44,11 @@ def test(model, dataloader):
         x, y, labels, edge_index = [item.to(device).float() for item in [x, y, labels, edge_index]]
         
         with torch.no_grad():
-            predicted, _ = model(x, edge_index)
+            model_out = model(x, edge_index)
+            if isinstance(model_out, tuple):
+                predicted = model_out[0]
+            else:
+                predicted = model_out
             predicted = predicted.float().to(device)
             
             
