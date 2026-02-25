@@ -148,14 +148,21 @@ class Main():
         return train_dataloader, val_dataloader
 
     def get_score(self, test_result, val_result):
+        test_labels_arr = np.array(test_result[2])
+        if test_labels_arr.ndim == 1:
+            test_labels = test_labels_arr.astype(int).tolist()
+        else:
+            test_labels = test_labels_arr[:, 0].astype(int).tolist()
 
-        feature_num = len(test_result[0][0])
-        np_test_result = np.array(test_result)
-        np_val_result = np.array(val_result)
-
-        test_labels = np_test_result[2, :, 0].tolist()
-    
-        test_scores, normal_scores = get_full_err_scores(test_result, val_result)
+        test_scores, normal_scores = get_full_err_scores(
+            test_result,
+            val_result,
+            self.model,
+            alpha=1.0,
+            gamma=1.0,
+            topq=0.1,
+            chunk_size=256,
+        )
 
         top1_best_info = get_best_performance_data(test_scores, test_labels, topk=1) 
         top1_val_info = get_val_performance_data(test_scores, normal_scores, test_labels, topk=1)

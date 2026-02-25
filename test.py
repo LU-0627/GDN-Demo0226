@@ -29,6 +29,7 @@ def test(model, dataloader):
     test_predicted_list = []
     test_ground_list = []
     test_labels_list = []
+    test_pi_list = []
 
     t_test_predicted_list = []
     t_test_ground_list = []
@@ -47,8 +48,10 @@ def test(model, dataloader):
             model_out = model(x, edge_index)
             if isinstance(model_out, tuple):
                 predicted = model_out[0]
+                pi_soft = model_out[2] if len(model_out) > 2 else None
             else:
                 predicted = model_out
+                pi_soft = None
             predicted = predicted.float().to(device)
             
             
@@ -65,6 +68,9 @@ def test(model, dataloader):
                 t_test_predicted_list = torch.cat((t_test_predicted_list, predicted), dim=0)
                 t_test_ground_list = torch.cat((t_test_ground_list, y), dim=0)
                 t_test_labels_list = torch.cat((t_test_labels_list, labels), dim=0)
+
+            if pi_soft is not None:
+                test_pi_list.append(pi_soft.detach().cpu().numpy())
         
         test_loss_list.append(loss.item())
         acu_loss += loss.item()
@@ -78,10 +84,14 @@ def test(model, dataloader):
     test_predicted_list = t_test_predicted_list.tolist()        
     test_ground_list = t_test_ground_list.tolist()        
     test_labels_list = t_test_labels_list.tolist()      
+    if len(test_pi_list) > 0:
+        test_pi_list = np.concatenate(test_pi_list, axis=0).tolist()
+    else:
+        test_pi_list = []
     
     avg_loss = sum(test_loss_list)/len(test_loss_list)
 
-    return avg_loss, [test_predicted_list, test_ground_list, test_labels_list]
+    return avg_loss, [test_predicted_list, test_ground_list, test_labels_list, test_pi_list]
 
 
 
