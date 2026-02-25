@@ -91,12 +91,12 @@ class GDN(nn.Module):
         edge_index = edge_index_sets[0]
 
 
-        embed_dim = dim
-        self.embedding = nn.Embedding(node_num, embed_dim)
-        self.bn_outlayer_in = nn.BatchNorm1d(embed_dim)
-
-
         edge_set_num = len(edge_index_sets)
+        embed_dim = dim
+        hidden_dim = dim * edge_set_num
+        self.embedding = nn.Embedding(node_num, embed_dim)
+        self.bn_outlayer_in = nn.BatchNorm1d(hidden_dim)
+
         self.gnn_layers = nn.ModuleList([
             GNNLayer(input_dim, dim, inter_dim=dim+embed_dim, heads=1) for i in range(edge_set_num)
         ])
@@ -110,7 +110,6 @@ class GDN(nn.Module):
 
         # Condition sensing: subsystem-level local-sensitive attention readout
         # W_h: [H, H], w_attn: [H, 1], where H = dim * edge_set_num
-        hidden_dim = dim * edge_set_num
         self.cond_attn_proj = nn.Linear(hidden_dim, hidden_dim, bias=True)
         self.cond_attn_vec = nn.Linear(hidden_dim, 1, bias=False)
         self.cond_attn_act = nn.LeakyReLU(negative_slope=0.2)
