@@ -2,7 +2,7 @@ import torch
 from torch.nn import Parameter, Linear, Sequential, BatchNorm1d, ReLU
 import torch.nn.functional as F
 from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
+from torch_geometric.utils import remove_self_loops, softmax
 
 from torch_geometric.nn.inits import glorot, zeros
 import time
@@ -50,7 +50,7 @@ class GraphLayer(MessagePassing):
 
 
 
-    def forward(self, x, edge_index, embedding, return_attention_weights=False):
+    def forward(self, x, edge_index, embedding, edge_weight=None, return_attention_weights=False):
         """"""
         if torch.is_tensor(x):
             x = self.lin(x)
@@ -58,11 +58,11 @@ class GraphLayer(MessagePassing):
         else:
             x = (self.lin(x[0]), self.lin(x[1]))
 
-        edge_index, _ = remove_self_loops(edge_index)
-        edge_index, _ = add_self_loops(edge_index,
-                                       num_nodes=x[1].size(self.node_dim))
+        if edge_weight is None:
+            edge_weight = torch.ones(edge_index.shape[1], device=edge_index.device)
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
 
-        out = self.propagate(edge_index, x=x, embedding=embedding, edges=edge_index,
+        out = self.propagate(edge_index, x=x, embedding=embedding, edges=edge_index, edge_weight=edge_weight,
                              return_attention_weights=return_attention_weights)
 
         if self.concat:
@@ -82,6 +82,7 @@ class GraphLayer(MessagePassing):
     def message(self, x_i, x_j, edge_index_i, size_i,
                 embedding,
                 edges,
+                edge_weight,
                 return_attention_weights):
 
         x_i = x_i.view(-1, self.heads, self.out_channels)
@@ -113,8 +114,9 @@ class GraphLayer(MessagePassing):
             self.__alpha__ = alpha
 
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-        
-        return x_j * alpha.view(-1, self.heads, 1)
+
+        edge_weight = edge_weight.view(-1, 1, 1)
+        return x_j * alpha.view(-1, self.heads, 1) * edge_weight
 
 
 

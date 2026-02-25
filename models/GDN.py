@@ -68,9 +68,15 @@ class GNNLayer(nn.Module):
         self.relu = nn.ReLU()
         self.leaky_relu = nn.LeakyReLU()
 
-    def forward(self, x, edge_index, embedding=None, node_num=0):
+    def forward(self, x, edge_index, embedding=None, edge_weight=None, node_num=0):
 
-        out, (new_edge_index, att_weight) = self.gnn(x, edge_index, embedding, return_attention_weights=True)
+        out, (new_edge_index, att_weight) = self.gnn(
+            x,
+            edge_index,
+            embedding,
+            edge_weight=edge_weight,
+            return_attention_weights=True,
+        )
         self.att_weight_1 = att_weight
         self.edge_index_1 = new_edge_index
   
@@ -80,7 +86,20 @@ class GNNLayer(nn.Module):
 
 
 class GDN(nn.Module):
-    def __init__(self, edge_index_sets, node_num, dim=64, out_layer_inter_dim=256, input_dim=10, out_layer_num=1, topk=20):
+    def __init__(
+        self,
+        edge_index_sets,
+        node_num,
+        dim=64,
+        out_layer_inter_dim=256,
+        input_dim=10,
+        out_layer_num=1,
+        topk=20,
+        moe_num=4,
+        low_rank_dim=8,
+        route_topk=2,
+        gumbel_tau=1.0,
+    ):
 
         super(GDN, self).__init__()
 
@@ -94,8 +113,25 @@ class GDN(nn.Module):
         edge_set_num = len(edge_index_sets)
         embed_dim = dim
         hidden_dim = dim * edge_set_num
+        self.hidden_dim = hidden_dim
         self.embedding = nn.Embedding(node_num, embed_dim)
         self.bn_outlayer_in = nn.BatchNorm1d(hidden_dim)
+
+        self.node_num = node_num
+        self.embed_dim = embed_dim
+
+        self.moe_num = max(2, int(moe_num))
+        self.low_rank_dim = max(1, int(low_rank_dim))
+        self.route_topk = max(2, int(route_topk))
+        self.sparse_topk = int(topk)
+        self.gumbel_tau = float(gumbel_tau)
+
+        self.e_base = nn.Parameter(torch.empty(node_num, embed_dim))
+        self.low_rank_u = nn.Parameter(torch.empty(self.moe_num, node_num, self.low_rank_dim))
+        self.low_rank_v = nn.Parameter(torch.empty(self.moe_num, self.low_rank_dim, embed_dim))
+
+        self.cond_encoder = nn.Linear(input_dim, hidden_dim, bias=True)
+        self.router = nn.Linear(hidden_dim, self.moe_num, bias=True)
 
         self.gnn_layers = nn.ModuleList([
             GNNLayer(input_dim, dim, inter_dim=dim+embed_dim, heads=1) for i in range(edge_set_num)
@@ -123,80 +159,144 @@ class GDN(nn.Module):
     
     def init_params(self):
         nn.init.kaiming_uniform_(self.embedding.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.e_base, a=math.sqrt(5))
+        nn.init.xavier_uniform_(self.low_rank_u)
+        nn.init.xavier_uniform_(self.low_rank_v)
+
+    def _sample_gumbel(self, shape, device):
+        uniform = torch.rand(shape, device=device).clamp_(1e-6, 1 - 1e-6)
+        return -torch.log(-torch.log(uniform))
+
+    def _build_sparse_graph_topk(self, node_embed, topk_num):
+        num_nodes = node_embed.shape[0]
+        use_k = max(1, min(topk_num, num_nodes))
+
+        src_list = []
+        dst_list = []
+        weight_list = []
+
+        for dst in range(num_nodes):
+            query = node_embed[dst]  # shape: [d]
+            scores = torch.matmul(node_embed, query)  # shape: [N]
+            scores = torch.nan_to_num(scores, nan=0.0, posinf=1e4, neginf=-1e4)
+
+            topk_vals, topk_idx = torch.topk(scores, k=use_k, dim=0)  # shape: [K], [K]
+            topk_w = F.softmax(topk_vals, dim=0)  # shape: [K]
+
+            src_list.append(topk_idx)
+            dst_list.append(torch.full_like(topk_idx, dst))
+            weight_list.append(topk_w)
+
+        src = torch.cat(src_list, dim=0)  # shape: [N*K]
+        dst = torch.cat(dst_list, dim=0)  # shape: [N*K]
+        edge_weight = torch.cat(weight_list, dim=0)  # shape: [N*K]
+        edge_index = torch.stack((src, dst), dim=0)  # shape: [2, N*K]
+
+        return edge_index.long(), edge_weight
+
+    def _batch_sparse_graph(self, mixed_embed, topk_num):
+        batch_size, num_nodes, _ = mixed_embed.shape
+
+        edge_index_list = []
+        edge_weight_list = []
+
+        for batch_idx in range(batch_size):
+            edge_index_b, edge_weight_b = self._build_sparse_graph_topk(mixed_embed[batch_idx], topk_num)
+            edge_index_b = edge_index_b + batch_idx * num_nodes
+            edge_index_list.append(edge_index_b)
+            edge_weight_list.append(edge_weight_b)
+
+        batch_edge_index = torch.cat(edge_index_list, dim=1)  # shape: [2, B*N*K]
+        batch_edge_weight = torch.cat(edge_weight_list, dim=0)  # shape: [B*N*K]
+
+        return batch_edge_index, batch_edge_weight
 
 
     def forward(self, data, org_edge_index):
 
         x = data.clone().detach()
-        edge_index_sets = self.edge_index_sets
 
         device = data.device
 
         batch_num, node_num, all_feature = x.shape
         x = x.view(-1, all_feature).contiguous()
 
+        # Module-1 feature extraction for routing input
+        # h_{i,t}: [B, N, H]
+        h_it = self.cond_encoder(data)
+
+        # e_{i,t} = w_attn^T LeakyReLU(W_h h_{i,t})
+        # attn_hidden: [B, N, H]
+        attn_hidden = self.cond_attn_act(self.cond_attn_proj(h_it))
+        # e_{i,t}: [B, N]
+        e_it = self.cond_attn_vec(attn_hidden).squeeze(-1)
+        e_it = torch.nan_to_num(e_it, nan=0.0, posinf=1e4, neginf=-1e4)
+
+        # beta_{i,t} = Softmax(e_{i,t}) over node dimension
+        # beta_{i,t}: [B, N]
+        beta_it = F.softmax(e_it, dim=1)
+
+        # h_{sys,t} = sum_i beta_{i,t} h_{i,t}
+        # h_{sys,t}: [B, H]
+        h_sys_t = torch.sum(beta_it.unsqueeze(-1) * h_it, dim=1)
+
+        # ---------------- Sparse MoE Routing (Module-2) ----------------
+        # (a) Routing logits z_t from h_{sys,t}
+        # z_t: [B, M]
+        z_t = self.router(h_sys_t)
+
+        # (b) pi_soft = Softmax((z_t + g_t) / tau)
+        # g_t: [B, M]
+        g_t = self._sample_gumbel(z_t.shape, device)
+        # pi_soft: [B, M]
+        pi_soft = F.softmax((z_t + g_t) / max(self.gumbel_tau, 1e-6), dim=-1)
+
+        # (c) Top-2 hard routing
+        # topk_idx: [B, 2], topk_val: [B, 2]
+        topk_val, topk_idx = torch.topk(pi_soft, k=self.route_topk, dim=-1)
+        # pi_hard: [B, M]
+        pi_hard = torch.zeros_like(pi_soft)
+        pi_hard.scatter_(1, topk_idx, topk_val)
+        pi_hard = pi_hard / pi_hard.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+
+        # (d) Straight-Through estimator
+        # pi_t: [B, M]
+        pi_t = (pi_hard - pi_soft).detach() + pi_soft
+
+        # (e) Low-rank prototype embeddings
+        # low_rank_delta: [M, N, d]
+        low_rank_delta = torch.matmul(self.low_rank_u, self.low_rank_v)
+        # proto_embed: [M, N, d]
+        proto_embed = self.e_base.unsqueeze(0) + low_rank_delta
+
+        # (f) Top-2 weighted merge (per sample)
+        # mixed_embed: [B, N, d]
+        mixed_embed = torch.einsum('bm,mnd->bnd', pi_t, proto_embed)
+        mixed_embed = torch.nan_to_num(mixed_embed, nan=0.0, posinf=1e4, neginf=-1e4)
+
+        # (g) Post-merge re-sparsification with Top-K'
+        # batch_edge_index: [2, E], batch_edge_weight: [E]
+        batch_edge_index, batch_edge_weight = self._batch_sparse_graph(mixed_embed, self.sparse_topk)
+        batch_edge_index = batch_edge_index.to(device)
+        batch_edge_weight = batch_edge_weight.to(device)
+
+        # embedding for graph attention term
+        # all_embeddings: [B*N, d]
+        all_embeddings = mixed_embed.reshape(batch_num * node_num, -1)
 
         gcn_outs = []
-        for i, edge_index in enumerate(edge_index_sets):
-            edge_num = edge_index.shape[1]
-            cache_edge_index = self.cache_edge_index_sets[i]
-
-            if cache_edge_index is None or cache_edge_index.shape[1] != edge_num*batch_num:
-                self.cache_edge_index_sets[i] = get_batch_edge_index(edge_index, batch_num, node_num).to(device)
-            
-            batch_edge_index = self.cache_edge_index_sets[i]
-            
-            all_embeddings = self.embedding(torch.arange(node_num).to(device))
-
-            weights_arr = all_embeddings.detach().clone()
-            all_embeddings = all_embeddings.repeat(batch_num, 1)
-
-            weights = weights_arr.view(node_num, -1)
-
-            cos_ji_mat = torch.matmul(weights, weights.T)
-            normed_mat = torch.matmul(weights.norm(dim=-1).view(-1,1), weights.norm(dim=-1).view(1,-1))
-            cos_ji_mat = cos_ji_mat / normed_mat
-
-            dim = weights.shape[-1]
-            topk_num = self.topk
-
-            topk_indices_ji = torch.topk(cos_ji_mat, topk_num, dim=-1)[1]
-
-            self.learned_graph = topk_indices_ji
-
-            gated_i = torch.arange(0, node_num).T.unsqueeze(1).repeat(1, topk_num).flatten().to(device).unsqueeze(0)
-            gated_j = topk_indices_ji.flatten().unsqueeze(0)
-            gated_edge_index = torch.cat((gated_j, gated_i), dim=0)
-
-            batch_gated_edge_index = get_batch_edge_index(gated_edge_index, batch_num, node_num).to(device)
-            gcn_out = self.gnn_layers[i](x, batch_gated_edge_index, node_num=node_num*batch_num, embedding=all_embeddings)
-
-            
+        for i in range(len(self.gnn_layers)):
+            gcn_out = self.gnn_layers[i](
+                x,
+                batch_edge_index,
+                embedding=all_embeddings,
+                edge_weight=batch_edge_weight,
+                node_num=node_num * batch_num,
+            )
             gcn_outs.append(gcn_out)
 
         x = torch.cat(gcn_outs, dim=1)
         x = x.view(batch_num, node_num, -1)
-
-        # (1) Feature tensor h_{i,t}: x -> [B, N, H]
-        h_it = x
-
-        # (2) e_{i,t} = w_attn^T LeakyReLU(W_h h_{i,t})
-        # W_h h_{i,t}: [B, N, H]
-        attn_hidden = self.cond_attn_act(self.cond_attn_proj(h_it))
-        # e_{i,t}: [B, N]
-        e_it = self.cond_attn_vec(attn_hidden).squeeze(-1)
-
-        # NaN/Inf guard before softmax
-        e_it = torch.nan_to_num(e_it, nan=0.0, posinf=1e4, neginf=-1e4)
-
-        # (3) beta_{i,t} = Softmax(e_{i,t}) over node dimension N
-        beta_it = F.softmax(e_it, dim=1)
-
-        # (4) h_{sys,t} = sum_i beta_{i,t} h_{i,t}
-        # beta_{i,t} unsqueeze: [B, N, 1]
-        # weighted h_{i,t}: [B, N, H]
-        # h_{sys,t}: [B, H]
-        h_sys_t = torch.sum(beta_it.unsqueeze(-1) * h_it, dim=1)
 
         indexes = torch.arange(0,node_num).to(device)
         node_embed = self.embedding(indexes)
