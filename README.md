@@ -60,6 +60,13 @@ data
 ```
 You can change running parameters in the run.sh.
 
+For Windows one-command WADI run (PowerShell):
+```
+    .\run_wadi.ps1
+    # GPU example:
+    .\run_wadi.ps1 -Device gpu -GpuId 0
+```
+
 # Others
 SWaT and WADI datasets can be requested from [iTrust](https://itrust.sutd.edu.sg/)
 
