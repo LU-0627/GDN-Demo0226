@@ -1,0 +1,36 @@
+2026-03-02 12:06:11 | INFO | Experiment directory: logs/swat/20260302_200611
+2026-03-02 12:06:11 | INFO | Configuration saved.
+2026-03-02 12:06:16 | INFO | Training started at 2026-03-02 20:06:16.
+2026-03-02 12:06:37 | INFO | epoch=0/30 train_loss=0.04866966 train_acu_loss=60.25304190
+2026-03-02 12:06:38 | INFO | model saved at epoch=0, val_loss=0.01987540, path=logs/swat/20260302_200611/best_model.pt
+2026-03-02 12:06:58 | INFO | epoch=1/30 train_loss=0.02705065 train_acu_loss=33.48870015
+2026-03-02 12:07:00 | INFO | model saved at epoch=1, val_loss=0.01367120, path=logs/swat/20260302_200611/best_model.pt
+2026-03-02 12:07:19 | INFO | epoch=2/30 train_loss=0.02060028 train_acu_loss=25.50314758
+2026-03-02 12:07:40 | INFO | epoch=3/30 train_loss=0.01807876 train_acu_loss=22.38150677
+2026-03-02 12:07:42 | INFO | model saved at epoch=3, val_loss=0.01230636, path=logs/swat/20260302_200611/best_model.pt
+2026-03-02 12:08:02 | INFO | epoch=4/30 train_loss=0.01907400 train_acu_loss=23.61361783
+2026-03-02 12:08:03 | INFO | model saved at epoch=4, val_loss=0.01129236, path=logs/swat/20260302_200611/best_model.pt
+2026-03-02 12:08:22 | INFO | epoch=5/30 train_loss=0.01827964 train_acu_loss=22.63019807
+2026-03-02 12:08:44 | INFO | epoch=6/30 train_loss=0.01424981 train_acu_loss=17.64125905
+2026-03-02 12:09:05 | INFO | epoch=7/30 train_loss=0.01460560 train_acu_loss=18.08173411
+2026-03-02 12:09:26 | INFO | epoch=8/30 train_loss=0.01499204 train_acu_loss=18.56014059
+2026-03-02 12:09:27 | INFO | model saved at epoch=8, val_loss=0.00810772, path=logs/swat/20260302_200611/best_model.pt
+2026-03-02 12:09:53 | INFO | epoch=9/30 train_loss=0.01668813 train_acu_loss=20.65990037
+2026-03-02 12:10:14 | INFO | epoch=10/30 train_loss=0.05235502 train_acu_loss=64.81551580
+2026-03-02 12:10:35 | INFO | epoch=11/30 train_loss=0.05102145 train_acu_loss=63.16454948
+2026-03-02 12:10:57 | INFO | epoch=12/30 train_loss=0.04998350 train_acu_loss=61.87957261
+2026-03-02 12:11:18 | INFO | epoch=13/30 train_loss=0.04831488 train_acu_loss=59.81382748
+2026-03-02 12:11:39 | INFO | epoch=14/30 train_loss=0.04824250 train_acu_loss=59.72421124
+2026-03-02 12:12:00 | INFO | epoch=15/30 train_loss=0.04978600 train_acu_loss=61.63506936
+2026-03-02 12:12:21 | INFO | epoch=16/30 train_loss=0.04820829 train_acu_loss=59.68186173
+2026-03-02 12:12:42 | INFO | epoch=17/30 train_loss=0.04943550 train_acu_loss=61.20114589
+2026-03-02 12:13:04 | INFO | epoch=18/30 train_loss=0.05032415 train_acu_loss=62.30129514
+2026-03-02 12:13:25 | INFO | epoch=19/30 train_loss=0.04994421 train_acu_loss=61.83093169
+2026-03-02 12:13:46 | INFO | epoch=20/30 train_loss=0.04949540 train_acu_loss=61.27530152
+2026-03-02 12:14:07 | INFO | epoch=21/30 train_loss=0.04923301 train_acu_loss=60.95046677
+2026-03-02 12:14:28 | INFO | epoch=22/30 train_loss=0.04957076 train_acu_loss=61.36860515
+2026-03-02 12:14:49 | INFO | epoch=23/30 train_loss=0.04928229 train_acu_loss=61.01147923
+2026-03-02 12:14:51 | INFO | early stop triggered at epoch=23, patience=15
+2026-03-02 12:15:09 | INFO | scoring components saved: logs/swat/20260302_200611/scoring_components.npz
+2026-03-02 12:15:09 | INFO | Strict metrics | F1=0.743089, Precision=0.975993, Recall=0.599927, PR-AUC=0.721531, Threshold=0.255138, AvgTTD=78.25
+2026-03-02 12:15:09 | INFO | Training finished at 2026-03-02 20:15:09, total_seconds=533.50.
