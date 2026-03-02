@@ -85,7 +85,7 @@ if [[ "$DEVICE" == "cpu" ]]; then
         -slide_stride "$slideStride" \
         -slide_win "$slideWin" \
         -batch "$batchSize" \
-        -epoch "$Epoch" \
+        -epoch "$EPOCH" \
         -comment "$comment" \
         -random_seed "$seed" \
         -decay "$decay" \
@@ -104,7 +104,7 @@ else
         -slide_stride "$slideStride" \
         -slide_win "$slideWin" \
         -batch "$batchSize" \
-        -epoch "$Epoch" \
+        -epoch "$EPOCH" \
         -comment "$comment" \
         -random_seed "$seed" \
         -decay "$decay" \
