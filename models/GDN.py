@@ -300,4 +300,3 @@ class GDN(nn.Module):
    
 
         return out, h_sys_t, pi_soft
-        
