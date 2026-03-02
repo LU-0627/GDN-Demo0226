@@ -176,7 +176,10 @@ def compute_modern_metrics(scores, true_labels, threshold_steps=400):
     prec_curve, rec_curve, _ = precision_recall_curve(true_arr, score_arr)
     pr_auc = auc(rec_curve, prec_curve)
 
-    quantiles = np.linspace(0.0, 1.0, int(threshold_steps), endpoint=False)
+    fine_steps = max(200, int(threshold_steps))
+    low_percentile_candidates = np.linspace(0.80, 0.999, fine_steps)
+    broad_candidates = np.linspace(0.50, 0.80, max(40, fine_steps // 10), endpoint=False)
+    quantiles = np.unique(np.concatenate([broad_candidates, low_percentile_candidates]))
     candidate_thresholds = np.quantile(score_arr, quantiles)
 
     best_f1 = -1.0

@@ -113,7 +113,8 @@ class Main():
                 input_dim=train_config['slide_win'],
                 out_layer_num=train_config['out_layer_num'],
                 out_layer_inter_dim=train_config['out_layer_inter_dim'],
-                topk=train_config['topk']
+                topk=train_config['topk'],
+                moe_num=train_config['moe_num'],
             ).to(self.device)
 
 
@@ -182,12 +183,15 @@ class Main():
         else:
             test_labels = test_labels_arr[:, 0].astype(int).tolist()
 
+        dataset_name = str(self.env_config.get('dataset', '')).lower()
+        score_gamma = 0.3 if dataset_name in ['wadi', 'wadi2'] else 1.0
+
         final_scores, residual_scores, struct_scores, gate_scores = get_full_err_scores(
             test_result,
             val_result,
             self.model,
             alpha=1.0,
-            gamma=1.0,
+            gamma=score_gamma,
             topq=0.1,
             chunk_size=256,
         )
@@ -278,6 +282,7 @@ if __name__ == "__main__":
     parser.add_argument('-decay', help='decay', type = float, default=0)
     parser.add_argument('-val_ratio', help='val ratio', type = float, default=0.1)
     parser.add_argument('-topk', help='topk num', type = int, default=20)
+    parser.add_argument('-moe_num', help='router expert number, <=0 means auto by dataset', type = int, default=0)
     parser.add_argument('-report', help='best / val', type = str, default='best')
     parser.add_argument('-load_model_path', help='trained model path', type = str, default='')
     parser.add_argument('-log_root', help='log root dir', type = str, default='./logs')
@@ -295,6 +300,15 @@ if __name__ == "__main__":
     os.environ['PYTHONHASHSEED'] = str(args.random_seed)
 
 
+    dataset_name = str(args.dataset).lower()
+    if args.moe_num > 0:
+        resolved_moe_num = int(args.moe_num)
+    elif dataset_name in ['wadi', 'wadi2']:
+        resolved_moe_num = 8
+    else:
+        resolved_moe_num = 4
+
+
     train_config = {
         'batch': args.batch,
         'epoch': args.epoch,
@@ -308,6 +322,7 @@ if __name__ == "__main__":
         'decay': args.decay,
         'val_ratio': args.val_ratio,
         'topk': args.topk,
+        'moe_num': resolved_moe_num,
     }
 
     env_config={
