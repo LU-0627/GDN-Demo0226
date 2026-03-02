@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import os
 
 # 1. 读取打分组件（将 npz_path 指向你的 scoring_components.npz）
-npz_path = r'F:\GDN\GDN-Demo0226\GDN\logs\swat\20260302_200611\scoring_components.npz'
+npz_path = r'F:\GDN\GDN-Demo0226\GDN\logs\wadi\20260302_202109\scoring_components.npz'
 if not os.path.exists(npz_path):
     raise FileNotFoundError(f"{npz_path} 未在当前目录找到。请把文件放在此目录或修改 npz_path。")
 
