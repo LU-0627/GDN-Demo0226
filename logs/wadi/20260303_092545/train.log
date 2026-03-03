@@ -1,0 +1,36 @@
+2026-03-03 01:25:45 | INFO | Experiment directory: logs/wadi/20260303_092545
+2026-03-03 01:25:45 | INFO | Configuration saved.
+2026-03-03 01:25:54 | INFO | Training started at 2026-03-03 09:25:54.
+2026-03-03 01:26:42 | INFO | epoch=0/30 train_loss=0.02019891 train_acu_loss=51.87078947
+2026-03-03 01:26:47 | INFO | model saved at epoch=0, val_loss=0.00724521, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:27:33 | INFO | epoch=1/30 train_loss=0.00704027 train_acu_loss=18.07941773
+2026-03-03 01:27:37 | INFO | model saved at epoch=1, val_loss=0.00491007, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:28:24 | INFO | epoch=2/30 train_loss=0.00628417 train_acu_loss=16.13775702
+2026-03-03 01:28:29 | INFO | model saved at epoch=2, val_loss=0.00490621, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:29:16 | INFO | epoch=3/30 train_loss=0.00596467 train_acu_loss=15.31728459
+2026-03-03 01:29:21 | INFO | model saved at epoch=3, val_loss=0.00446568, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:30:08 | INFO | epoch=4/30 train_loss=0.00563681 train_acu_loss=14.47533389
+2026-03-03 01:30:12 | INFO | model saved at epoch=4, val_loss=0.00436474, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:31:00 | INFO | epoch=5/30 train_loss=0.00549899 train_acu_loss=14.12139773
+2026-03-03 01:31:52 | INFO | epoch=6/30 train_loss=0.00532419 train_acu_loss=13.67250966
+2026-03-03 01:32:44 | INFO | epoch=7/30 train_loss=0.00512481 train_acu_loss=13.16051519
+2026-03-03 01:32:48 | INFO | model saved at epoch=7, val_loss=0.00395137, path=logs/wadi/20260303_092545/best_model.pt
+2026-03-03 01:33:35 | INFO | epoch=8/30 train_loss=0.00479884 train_acu_loss=12.32341025
+2026-03-03 01:34:48 | INFO | epoch=9/30 train_loss=0.00474964 train_acu_loss=12.19706334
+2026-03-03 01:35:40 | INFO | epoch=10/30 train_loss=0.04822953 train_acu_loss=123.85342950
+2026-03-03 01:36:32 | INFO | epoch=11/30 train_loss=0.04108464 train_acu_loss=105.50536273
+2026-03-03 01:37:23 | INFO | epoch=12/30 train_loss=0.04010283 train_acu_loss=102.98406710
+2026-03-03 01:38:15 | INFO | epoch=13/30 train_loss=0.03979376 train_acu_loss=102.19037847
+2026-03-03 01:39:07 | INFO | epoch=14/30 train_loss=0.03950168 train_acu_loss=101.44031851
+2026-03-03 01:39:58 | INFO | epoch=15/30 train_loss=0.03940594 train_acu_loss=101.19446601
+2026-03-03 01:40:50 | INFO | epoch=16/30 train_loss=0.03926060 train_acu_loss=100.82122814
+2026-03-03 01:41:41 | INFO | epoch=17/30 train_loss=0.03922052 train_acu_loss=100.71828977
+2026-03-03 01:42:33 | INFO | epoch=18/30 train_loss=0.03928922 train_acu_loss=100.89472110
+2026-03-03 01:43:24 | INFO | epoch=19/30 train_loss=0.03948018 train_acu_loss=101.38509543
+2026-03-03 01:44:15 | INFO | epoch=20/30 train_loss=0.03908641 train_acu_loss=100.37390926
+2026-03-03 01:45:08 | INFO | epoch=21/30 train_loss=0.03927508 train_acu_loss=100.85840714
+2026-03-03 01:45:59 | INFO | epoch=22/30 train_loss=0.03923124 train_acu_loss=100.74583232
+2026-03-03 01:46:04 | INFO | early stop triggered at epoch=22, patience=15
+2026-03-03 01:46:18 | INFO | scoring components saved: logs/wadi/20260303_092545/scoring_components.npz
+2026-03-03 01:46:18 | INFO | Strict metrics | F1=0.327068, Precision=0.438655, Recall=0.260739, PR-AUC=0.270803, Threshold=2.155544, AvgTTD=5.142857142857143
+2026-03-03 01:46:18 | INFO | Training finished at 2026-03-03 09:46:18, total_seconds=1223.69.
