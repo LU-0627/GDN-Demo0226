@@ -40,14 +40,14 @@ def compute_structural_drift_scores(test_pi, model, topq=0.1, chunk_size=256):
 
     with torch.no_grad():
         e_base = model.e_base.detach().to(device)
-        low_rank_u = model.low_rank_u.detach().to(device)
-        low_rank_v = model.low_rank_v.detach().to(device)
+        codebook_u = model.codebook_u.detach().to(device)
+        codebook_v = model.codebook_v.detach().to(device)
 
-        low_rank_delta = torch.matmul(low_rank_u, low_rank_v)
-        proto_embed = e_base.unsqueeze(0) + low_rank_delta
+        codebook_delta = torch.matmul(codebook_u, codebook_v)
+        codebook_embed = e_base.unsqueeze(0) + codebook_delta
 
         total_steps = pi_np.shape[0]
-        num_nodes = int(proto_embed.shape[1])
+        num_nodes = int(codebook_embed.shape[1])
         topq_k = max(1, int(np.ceil(num_nodes * float(topq))))
 
         struct_scores = []
@@ -57,7 +57,7 @@ def compute_structural_drift_scores(test_pi, model, topq=0.1, chunk_size=256):
             end_idx = min(start_idx + int(chunk_size), total_steps)
 
             pi_chunk = torch.tensor(pi_np[start_idx:end_idx], dtype=torch.float32, device=device)
-            mixed_embed = torch.einsum('tm,mnd->tnd', pi_chunk, proto_embed)
+            mixed_embed = torch.einsum('tm,mnd->tnd', pi_chunk, codebook_embed)
             mixed_embed = torch.nan_to_num(mixed_embed, nan=0.0, posinf=1e4, neginf=-1e4)
 
             A_chunk = torch.bmm(mixed_embed, mixed_embed.transpose(1, 2))

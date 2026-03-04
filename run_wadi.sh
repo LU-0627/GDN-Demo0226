@@ -8,7 +8,7 @@ show_help() {
     echo "  -d, --device DEVICE    Set device type (cpu or gpu, default: cpu)"
     echo "  -g, --gpu-id ID        Set GPU ID (default: 0)"
     echo "  -e, --epoch EPOCH      Set number of epochs (default: 30)"
-    echo "  -m, --moe-num NUM      Set MOE number (default: 8)"
+    echo "  -m, --codebook-size NUM Set codebook size (default: 8)"
     echo "  -h, --help             Show this help message"
     echo ""
     echo "Example:"
@@ -20,7 +20,7 @@ show_help() {
 DEVICE="cpu"
 GPU_ID=0
 EPOCH=30
-MOE_NUM=8
+CODEBOOK_SIZE=8
 
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
@@ -37,8 +37,8 @@ while [[ $# -gt 0 ]]; do
             EPOCH="$2"
             shift 2
             ;;
-        -m|--moe-num)
-            MOE_NUM="$2"
+        -m|--codebook-size)
+            CODEBOOK_SIZE="$2"
             shift 2
             ;;
         -h|--help)
@@ -95,7 +95,7 @@ if [[ "$DEVICE" == "cpu" ]]; then
         -val_ratio "$valRatio" \
         -report "$report" \
         -topk "$topk" \
-        -moe_num "$MOE_NUM" \
+        -codebook_size "$CODEBOOK_SIZE" \
         -device cpu
 else
     CUDA_VISIBLE_DEVICES="$GPU_ID" python main.py \
@@ -114,5 +114,5 @@ else
         -val_ratio "$valRatio" \
         -report "$report" \
         -topk "$topk" \
-        -moe_num "$MOE_NUM"
+        -codebook_size "$CODEBOOK_SIZE"
 fi

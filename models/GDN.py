@@ -95,7 +95,7 @@ class GDN(nn.Module):
         input_dim=10,
         out_layer_num=1,
         topk=20,
-        moe_num=4,
+        codebook_size=4,
         low_rank_dim=8,
         route_topk=2,
         gumbel_tau=1.0,
@@ -120,18 +120,18 @@ class GDN(nn.Module):
         self.node_num = node_num
         self.embed_dim = embed_dim
 
-        self.moe_num = max(2, int(moe_num))
+        self.codebook_size = max(2, int(codebook_size))
         self.low_rank_dim = max(1, int(low_rank_dim))
         self.route_topk = max(2, int(route_topk))
         self.sparse_topk = int(topk)
         self.gumbel_tau = float(gumbel_tau)
 
         self.e_base = nn.Parameter(torch.empty(node_num, embed_dim))
-        self.low_rank_u = nn.Parameter(torch.empty(self.moe_num, node_num, self.low_rank_dim))
-        self.low_rank_v = nn.Parameter(torch.empty(self.moe_num, self.low_rank_dim, embed_dim))
+        self.codebook_u = nn.Parameter(torch.empty(self.codebook_size, node_num, self.low_rank_dim))
+        self.codebook_v = nn.Parameter(torch.empty(self.codebook_size, self.low_rank_dim, embed_dim))
 
         self.cond_encoder = nn.Linear(input_dim, hidden_dim, bias=True)
-        self.router = nn.Linear(hidden_dim, self.moe_num, bias=True)
+        self.quantizer = nn.Linear(hidden_dim, self.codebook_size, bias=True)
 
         self.gnn_layers = nn.ModuleList([
             GNNLayer(input_dim, dim, inter_dim=dim+embed_dim, heads=1) for i in range(edge_set_num)
@@ -160,8 +160,8 @@ class GDN(nn.Module):
     def init_params(self):
         nn.init.kaiming_uniform_(self.embedding.weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.e_base, a=math.sqrt(5))
-        nn.init.xavier_uniform_(self.low_rank_u)
-        nn.init.xavier_uniform_(self.low_rank_v)
+        nn.init.xavier_uniform_(self.codebook_u)
+        nn.init.xavier_uniform_(self.codebook_v)
 
     def _sample_gumbel(self, shape, device):
         uniform = torch.rand(shape, device=device).clamp_(1e-6, 1 - 1e-6)
@@ -225,10 +225,10 @@ class GDN(nn.Module):
         # h_{sys,t}: [B, H]
         h_sys_t = torch.sum(beta_it.unsqueeze(-1) * h_it, dim=1)
 
-        # ---------------- Sparse MoE Routing (Module-2) ----------------
-        # (a) Routing logits z_t from h_{sys,t}
+        # ---------------- Discrete Graph Codebook via Vector Quantization (VQ-Graph) ----------------
+        # (a) Quantization logits z_t from h_{sys,t}
         # z_t: [B, M]
-        z_t = self.router(h_sys_t)
+        z_t = self.quantizer(h_sys_t)
 
         # (b) pi_soft = Softmax((z_t + g_t) / tau)
         # g_t: [B, M]
@@ -236,7 +236,7 @@ class GDN(nn.Module):
         # pi_soft: [B, M]
         pi_soft = F.softmax((z_t + g_t) / max(self.gumbel_tau, 1e-6), dim=-1)
 
-        # (c) Top-2 hard routing
+        # (c) Top-2 hard quantization assignment
         # topk_idx: [B, 2], topk_val: [B, 2]
         topk_val, topk_idx = torch.topk(pi_soft, k=self.route_topk, dim=-1)
         # pi_hard: [B, M]
@@ -244,19 +244,19 @@ class GDN(nn.Module):
         pi_hard.scatter_(1, topk_idx, topk_val)
         pi_hard = pi_hard / pi_hard.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
-        # (d) Straight-Through estimator
+        # (d) Gumbel-Vector Quantization (Gumbel-VQ) with Straight-Through Estimator
         # pi_t: [B, M]
         pi_t = (pi_hard - pi_soft).detach() + pi_soft
 
-        # (e) Low-rank prototype embeddings
-        # low_rank_delta: [M, N, d]
-        low_rank_delta = torch.matmul(self.low_rank_u, self.low_rank_v)
-        # proto_embed: [M, N, d]
-        proto_embed = self.e_base.unsqueeze(0) + low_rank_delta
+        # (e) Discrete graph codebook embeddings
+        # codebook_delta: [M, N, d]
+        codebook_delta = torch.matmul(self.codebook_u, self.codebook_v)
+        # codebook_embed: [M, N, d]
+        codebook_embed = self.e_base.unsqueeze(0) + codebook_delta
 
         # (f) Top-2 weighted merge (per sample)
         # mixed_embed: [B, N, d]
-        mixed_embed = torch.einsum('bm,mnd->bnd', pi_t, proto_embed)
+        mixed_embed = torch.einsum('bm,mnd->bnd', pi_t, codebook_embed)
         mixed_embed = torch.nan_to_num(mixed_embed, nan=0.0, posinf=1e4, neginf=-1e4)
 
         # (g) Post-merge re-sparsification with Top-K'

@@ -114,7 +114,7 @@ class Main():
                 out_layer_num=train_config['out_layer_num'],
                 out_layer_inter_dim=train_config['out_layer_inter_dim'],
                 topk=train_config['topk'],
-                moe_num=train_config['moe_num'],
+            codebook_size=train_config['codebook_size'],
             ).to(self.device)
 
 
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     parser.add_argument('-decay', help='decay', type = float, default=0)
     parser.add_argument('-val_ratio', help='val ratio', type = float, default=0.1)
     parser.add_argument('-topk', help='topk num', type = int, default=20)
-    parser.add_argument('-moe_num', help='router expert number, <=0 means auto by dataset', type = int, default=0)
+    parser.add_argument('-codebook_size', help='codebook size, <=0 means auto by dataset', type = int, default=0)
     parser.add_argument('-report', help='best / val', type = str, default='best')
     parser.add_argument('-load_model_path', help='trained model path', type = str, default='')
     parser.add_argument('-log_root', help='log root dir', type = str, default='./logs')
@@ -301,12 +301,12 @@ if __name__ == "__main__":
 
 
     dataset_name = str(args.dataset).lower()
-    if args.moe_num > 0:
-        resolved_moe_num = int(args.moe_num)
+    if args.codebook_size > 0:
+        resolved_codebook_size = int(args.codebook_size)
     elif dataset_name in ['wadi', 'wadi2']:
-        resolved_moe_num = 8
+        resolved_codebook_size = 8
     else:
-        resolved_moe_num = 4
+        resolved_codebook_size = 4
 
 
     train_config = {
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         'decay': args.decay,
         'val_ratio': args.val_ratio,
         'topk': args.topk,
-        'moe_num': resolved_moe_num,
+        'codebook_size': resolved_codebook_size,
     }
 
     env_config={

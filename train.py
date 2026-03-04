@@ -93,7 +93,7 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
     early_stop_win = 15
 
     warmup_epoch = int(config.get('warmup_epoch', 10))
-    default_cluster_num = int(config.get('kmeans_clusters', config.get('moe_num', 4)))
+    default_codebook_size = int(config.get('kmeans_clusters', config.get('codebook_size', 4)))
     lambda_balance = float(config.get('lambda_balance', 0.1))
     lambda_smooth = float(config.get('lambda_smooth', 0.1))
     eta = float(config.get('eta', 1.0))
@@ -180,7 +180,7 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
 
         if i_epoch == warmup_epoch - 1 and p_prior is None and len(h_sys_list) > 0:
             all_h_sys = np.concatenate(h_sys_list, axis=0)
-            cluster_num = route_dim if route_dim is not None else default_cluster_num
+            cluster_num = route_dim if route_dim is not None else default_codebook_size
             kmeans = KMeans(n_clusters=cluster_num, random_state=seed, n_init=10)
             cluster_labels = kmeans.fit_predict(all_h_sys)
 
